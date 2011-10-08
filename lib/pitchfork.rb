@@ -18,7 +18,6 @@ module Pitchfork
 
     def pitch(&block)
       collection.each do |data|
-        puts "Before fork: #{@children}"
         if @child = fork
           @children += 1
         else
