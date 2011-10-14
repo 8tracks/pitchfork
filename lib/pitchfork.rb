@@ -70,7 +70,7 @@ module Pitchfork
       trap('TERM')  { shutdown! }
       trap('INT')   { shutdown! }
       trap('QUIT')  { shutdown }
-      trap('STOP')  { pause! }
+      trap('USR2')  { pause! }
       trap('CONT')  { restart! }
     end
 
@@ -91,7 +91,6 @@ module Pitchfork
 
     def pause!
       procline "Paused processing"
-      puts "changing procline"
       @status = :pause
     end
 
