@@ -75,8 +75,8 @@ module Pitchfork
     end
 
     def shutdown
-      @status = :quit
       procline "Shutting down ..."
+      @status = :quit
     end
 
     def shutdown!
@@ -95,6 +95,7 @@ module Pitchfork
     end
 
     def restart!
+      procline "Restarting ..."
       @status = :work
     end
 
