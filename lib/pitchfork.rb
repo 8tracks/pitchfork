@@ -4,7 +4,7 @@ module Pitchfork
   class PitchforkError < ::StandardError; end
   class MissingBlock < PitchforkError; end
 
-  def self.pitch(collection, options = {}, &block)
+  def self.work(collection, options = {}, &block)
     Handler.new(collection, options).pitch(&block)
   end
 
@@ -14,18 +14,21 @@ module Pitchfork
     def initialize(collection, config = {})
       @collection = collection
       @config = {:forks => 2, :name => "pitchfork"}.merge(config)
+      @callbacks = {}
       @children = {}
       @status = :work
       @master_pid = Process.pid
     end
 
-    def pitch(&block)
+    def work
       puts "Current pid is: #{@master_pid}"
       register_signals
 
       procline "Spawning workers ..."
       collection.each do |data|
         break unless work?
+
+        run_callback :before_work
 
         if @child = fork
           @children[@child] = true
@@ -39,6 +42,9 @@ module Pitchfork
         if @children.size >= @config[:forks]
           procline "Waiting for workers to finish ..."
           pid = Process.wait
+
+          run_callback :after_work
+
           @children.delete(pid)
         end
 
@@ -52,6 +58,14 @@ module Pitchfork
 
       Process.waitall
       collection
+    end
+
+    def before_work_callback=(cb)
+      @callbacks[:before_work] = cb
+    end
+
+    def after_work_callback=(cb)
+      @callbacks[:after_work] = cb
     end
 
     def work?
@@ -113,6 +127,13 @@ module Pitchfork
       line << msg
       $0 = line
     end
+
+    def run_callback(type)
+      if callback = @callbacks[type]
+        callback.call($?.exitstatus == 0, $?.exitstatus)
+      end
+    end
+
   end
 end
 
