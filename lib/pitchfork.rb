@@ -3,6 +3,16 @@ require "pitchfork/version"
 module Pitchfork
   class PitchforkError < ::StandardError; end
   class MissingBlock < PitchforkError; end
+  class InvalidHook < PitchforkError; end
+
+  HOOKS = [
+    :start,       # In parent, before looping through collection
+    :before_fork, # In parent, inside loop, before calling `fork`
+    :parent_fork, # In parent, after fork
+    :child_fork,  # In child, after fork
+    :work_done,   # In parent, after child exits
+    :complete     # In parent, after looping through the collection
+  ]
 
   def self.work(collection, options = {}, &block)
     Handler.new(collection, options).work(&block)
@@ -14,7 +24,7 @@ module Pitchfork
     def initialize(collection, config = {})
       @collection = collection
       @config = {:forks => 2, :name => "pitchfork"}.merge(config)
-      @callbacks = {}
+      @hooks = {}
       @children = {}
       @status = :work
       @master_pid = Process.pid
@@ -25,15 +35,19 @@ module Pitchfork
       register_signals
 
       procline "Spawning workers ..."
+      run_hook :start
+
       collection.each do |data|
         break unless work?
 
-        run_callback :before_work
+        run_hook :before_fork
 
         if @child = fork
+          run_hook :parent_fork
           @children[@child] = true
         else
           procline "worker"
+          run_hook :child_fork
           yield data
           exit
         end
@@ -42,9 +56,7 @@ module Pitchfork
         if @children.size >= @config[:forks]
           procline "Waiting for workers to finish ..."
           pid = Process.wait
-
-          run_callback :after_work
-
+          run_hook :work_done, $?.exitstatus == 0, $?.exitstatus
           @children.delete(pid)
         end
 
@@ -56,16 +68,22 @@ module Pitchfork
         end
       end
 
-      Process.waitall
+      remaining = Process.waitall
+      remaining.each do |pid,status|
+        run_hook :work_done, status.exitstatus == 0, status.exitstatus
+      end
+
+      run_hook :complete
       collection
     end
 
-    def before_work_callback=(cb)
-      @callbacks[:before_work] = cb
-    end
+    def on(type, hook)
+      raise InvalidHook.new(<<-ERRMSG) unless HOOKS.include?(type)
+        Pitchfork hook ':#{type}' does not exist.
+        Valid hooks are: #{HOOKS.collect {|c| ":#{c}"}.join(", ")}
+      ERRMSG
 
-    def after_work_callback=(cb)
-      @callbacks[:after_work] = cb
+      @hooks[type] = hook
     end
 
     def work?
@@ -128,12 +146,15 @@ module Pitchfork
       $0 = line
     end
 
-    def run_callback(type)
-      if callback = @callbacks[type]
-        callback.call($?.exitstatus == 0, $?.exitstatus)
+    def run_hook(type, *args)
+      if hook = @hooks[type]
+        if type == :work_done
+          hook.call(*args)
+        else
+          hook.call
+        end
       end
     end
-
   end
 end
 
