@@ -5,7 +5,7 @@ module Pitchfork
   class MissingBlock < PitchforkError; end
 
   def self.work(collection, options = {}, &block)
-    Handler.new(collection, options).pitch(&block)
+    Handler.new(collection, options).work(&block)
   end
 
   class Handler
